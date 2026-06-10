@@ -57,34 +57,36 @@ Jawab singkat, padat, dan to the point."""
 
 VISION_PROMPT = """Kamu adalah trading analyst profesional. Analisa chart trading ini secara mendalam dan presisi.
 
-ATURAN BACA CHART:
-- LONG setup: entry di bawah, TP di ATAS entry, SL di BAWAH entry
-- SHORT setup: entry di atas, TP di BAWAH entry, SL di ATAS entry
-- Baca SEMUA garis dan label angka di sisi kanan chart dengan teliti dan presisi
-- Zona merah/pink = area SL atau resistance
-- Zona hijau/biru = area TP atau support
+LANGKAH 1 - TENTUKAN ARAH (WAJIB BACA INI DULU):
+Lihat posisi harga SAAT INI vs struktur chart:
+- Trend turun (candle merah dominan, lower high lower low, harga turun) = SHORT
+- Trend naik (candle hijau dominan, higher high higher low, harga naik) = LONG
+- Ada label SHORT/SELL/BEARISH di chart = SHORT
+- Ada label LONG/BUY/BULLISH di chart = LONG
+- Zona merah/resistance DI ATAS harga saat ini dan entry zone ada di bawah = SHORT
+- Zona hijau/support DI BAWAH harga saat ini dan entry zone ada di atas = LONG
+- Harga sudah turun jauh dan ada potensi reversal ke atas = LONG
+- Harga sudah naik jauh dan ada potensi reversal ke bawah = SHORT
 
-ATURAN BACA SL (WAJIB):
-- SL untuk LONG = garis/zona MERAH yang paling BAWAH di chart (nilai terkecil di zona merah)
-- SL untuk SHORT = garis/zona MERAH yang paling ATAS di chart (nilai terbesar di zona merah)
-- Kalau ada beberapa garis merah berdekatan, ambil yang paling ekstrem (paling jauh dari entry)
-- JANGAN ambil garis merah tengah sebagai SL
+LANGKAH 2 - BACA LEVEL SESUAI ARAH:
+LONG setup:
+- Entry zone = zona hijau/biru (support area)
+- TP1, TP2, TP3 = level-level DI ATAS entry (nilai makin besar)
+- SL = garis/zona MERAH paling BAWAH (nilai terkecil di chart)
 
-ATURAN BACA ENTRY:
-- Entry = garis atau zona di antara SL dan TP pertama
-- Kalau ada zona entry (range), ambil zone_low dan zone_high nya
-- entry = nilai tengah zona entry
+SHORT setup:
+- Entry zone = zona merah/pink (resistance area)
+- TP1, TP2, TP3 = level-level DI BAWAH entry (nilai makin kecil)
+- SL = garis/zona MERAH paling ATAS (nilai terbesar di chart)
 
-ATURAN BACA TP:
-- TP1 = target profit pertama (terdekat dari entry)
-- TP2 = target profit kedua
-- TP3 = target profit ketiga (terjauh, paling agresif)
-- Baca label angka di sebelah kanan chart dengan cermat
+LANGKAH 3 - BACA ENTRY ZONE:
+- Kalau ada zona entry (range/box), ambil zone_low dan zone_high
+- entry = nilai tengah zona
 
 VALIDASI WAJIB sebelum return JSON:
-- Kalau direction LONG  -> pastikan sl < entry < tp1 < tp2 < tp3
-- Kalau direction SHORT -> pastikan sl > entry > tp1 > tp2 > tp3
-- Kalau tidak sesuai, koreksi semua level dulu baru return
+- LONG  → sl < zone_low < entry < tp1 < tp2 < tp3
+- SHORT → sl > zone_high > entry > tp1 > tp2 > tp3
+- Kalau tidak sesuai, KOREKSI dulu baru return
 
 Return JSON ini SAJA, tanpa backticks, tanpa teks lain:
 {
@@ -428,35 +430,59 @@ async def call_groq_chat(user_message: str, history: list) -> str:
 def format_analysis(data: dict) -> str:
     d  = data.get("direction", "-")
     cf = data.get("confidence", "-")
-    ci = "[HIGH]" if cf == "High" else "[MED]" if cf == "Medium" else "[LOW]"
-    dl = "LONG (BUY)" if d == "LONG" else "SHORT (SELL)"
+    
+    # Emoji direction
+    if d == "LONG":
+        dir_emoji = "🟢"
+        dir_label = "LONG / BUY"
+    else:
+        dir_emoji = "🔴"
+        dir_label = "SHORT / SELL"
+    
+    # Confidence badge
+    if cf == "High":
+        cf_badge = "🔥 HIGH"
+    elif cf == "Medium":
+        cf_badge = "⚡ MEDIUM"
+    else:
+        cf_badge = "🌀 LOW"
+    
+    # Trend emoji
+    trend = data.get("trend", "-")
+    trend_emoji = "📈" if "Up" in trend else "📉" if "Down" in trend else "➡️"
+    
+    pair = data.get("pair", "-")
+    tf   = data.get("timeframe", "-")
+    ex   = data.get("exchange", "-")
+    
     return (
-        f"==== HASIL BACA CHART ====\n\n"
-        f"Pair      : {data.get('pair','-')}\n"
-        f"Exchange  : {data.get('exchange','-')}\n"
-        f"TF        : {data.get('timeframe','-')}\n"
-        f"Arah      : {dl}\n"
-        f"Trend     : {data.get('trend','-')}\n"
-        f"Confidence: {ci} {cf}\n"
-        f"Harga     : {data.get('current_price','-')}\n\n"
-        f"---- ENTRY SETUP ----\n"
-        f"Entry     : {data.get('entry','-')}\n"
-        f"Zone Low  : {data.get('entry_zone_low','-')}\n"
-        f"Zone High : {data.get('entry_zone_high','-')}\n\n"
-        f"TP1 : {data.get('tp1','-')}\n"
-        f"TP2 : {data.get('tp2','-')}\n"
-        f"TP3 : {data.get('tp3','-')}\n"
-        f"SL  : {data.get('sl','-')}\n"
-        f"RR  : {data.get('risk_reward','-')}\n\n"
-        f"---- ANALISIS ----\n"
-        f"Struktur  : {data.get('struktur','-')}\n"
-        f"Zona Kunci: {data.get('zona_kunci','-')}\n"
-        f"Sinyal    : {data.get('sinyal','-')}\n\n"
-        f"---- RISK ----\n"
-        f"Invalidasi: {data.get('invalidasi','-')}\n"
-        f"Risk Note : {data.get('catatan_risiko','-')}\n\n"
-        f"---- SUMMARY ----\n"
-        f"{data.get('notes','-')}"
+        f"╔══════════════════════╗\n"
+        f"║   📊 SIGNAL TRADING  ║\n"
+        f"╚══════════════════════╝\n\n"
+        f"{dir_emoji} *{pair}* | {tf} | {ex}\n"
+        f"Arah    : {dir_emoji} *{dir_label}*\n"
+        f"Trend   : {trend_emoji} {trend}\n"
+        f"Sinyal  : {cf_badge}\n"
+        f"Harga   : `{data.get('current_price','-')}`\n\n"
+        f"━━━━━━ 🎯 ENTRY SETUP ━━━━━━\n"
+        f"📍 Entry     : `{data.get('entry','-')}`\n"
+        f"📦 Zone Low  : `{data.get('entry_zone_low','-')}`\n"
+        f"📦 Zone High : `{data.get('entry_zone_high','-')}`\n\n"
+        f"🎯 TP1  : `{data.get('tp1','-')}`\n"
+        f"🎯 TP2  : `{data.get('tp2','-')}`\n"
+        f"🎯 TP3  : `{data.get('tp3','-')}`\n"
+        f"🛑 SL   : `{data.get('sl','-')}`\n"
+        f"⚖️  R:R  : {data.get('risk_reward','-')}\n\n"
+        f"━━━━━━ 🔍 ANALISIS ━━━━━━\n"
+        f"📐 Struktur  : {data.get('struktur','-')}\n"
+        f"🗝️  Zona Kunci: {data.get('zona_kunci','-')}\n"
+        f"📡 Sinyal    : {data.get('sinyal','-')}\n\n"
+        f"━━━━━━ ⚠️ RISK MANAGEMENT ━━━━━━\n"
+        f"❌ Invalidasi: {data.get('invalidasi','-')}\n"
+        f"💡 Risk Note : {data.get('catatan_risiko','-')}\n\n"
+        f"━━━━━━ 📝 SUMMARY ━━━━━━\n"
+        f"{data.get('notes','-')}\n"
+        f"\n⏰ {data.get('timeframe','-')} | 🏦 {data.get('exchange','-')}"
     )
 
 async def cmd_posisi(update: Update, context: ContextTypes.DEFAULT_TYPE):
