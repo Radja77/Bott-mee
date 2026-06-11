@@ -527,26 +527,68 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     result = await call_groq_vision(image_b64)
 
     try:
-        raw  = result["choices"][0]["message"]["content"].strip()
-        raw  = raw.replace("```json", "").replace("```", "").strip()
-        data = json.loads(raw)
+        # Ambil konten dari respons LLM. Gunakan get() agar tetap aman jika struktur berubah
+        content = (
+            result.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+        ).strip()
+
+        # Hilangkan pembungkus markdown seperti ```json``` atau ```
+        cleaned = content.replace("```json", "").replace("```", "").strip()
+
+        # Coba decode langsung sebagai JSON
+        data: dict | None = None
+        if cleaned:
+            try:
+                data = json.loads(cleaned)
+            except json.JSONDecodeError:
+                # Jika gagal, coba ambil substring yang tampak seperti objek JSON pertama
+                match = re.search(r"\{.*\}", cleaned, re.DOTALL)
+                if match:
+                    try:
+                        data = json.loads(match.group(0))
+                    except Exception:
+                        data = None
+
+        # Jika tidak ada data valid, lempar error agar masuk ke blok except di bawah
+        if not data:
+            raise ValueError("Tidak dapat mem-parsing output analisis menjadi JSON")
+
+        # Normalisasi simbol pair dan simpan ke last_analysis
         data["pair"] = fix_symbol(data.get("pair", ""))
         err     = validasi_levels(data)
         user_id = update.effective_user.id
         last_analysis[user_id] = data
+        # Kirim analisis dalam format terformat
         await update.message.reply_text(format_analysis(data))
         if err:
-            await update.message.reply_text(f"PERINGATAN:\n{err}\n\nCek manual dulu sebelum execute ya bro!")
-        keyboard = [[
-            InlineKeyboardButton("✅ Mau Execute", callback_data="mau_execute"),
-            InlineKeyboardButton("❌ Gausah", callback_data="cancel_order")
-        ]]
-        await update.message.reply_text("Mau buka posisi di Bybit bro?", reply_markup=InlineKeyboardMarkup(keyboard))
+            await update.message.reply_text(
+                f"PERINGATAN:\n{err}\n\nCek manual dulu sebelum execute ya bro!"
+            )
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Mau Execute", callback_data="mau_execute"),
+                InlineKeyboardButton("❌ Gausah", callback_data="cancel_order"),
+            ]
+        ]
+        await update.message.reply_text(
+            "Mau buka posisi di Bybit bro?", reply_markup=InlineKeyboardMarkup(keyboard)
+        )
         if user_id not in chat_history:
             chat_history[user_id] = []
-        chat_history[user_id].append({"role": "assistant", "content": f"Analisis {data.get('pair')} {data.get('direction')} entry {data.get('entry')} TP1 {data.get('tp1')} TP2 {data.get('tp2')} TP3 {data.get('tp3')} SL {data.get('sl')}"})
+        chat_history[user_id].append(
+            {
+                "role": "assistant",
+                "content": f"Analisis {data.get('pair')} {data.get('direction')} entry {data.get('entry')} TP1 {data.get('tp1')} TP2 {data.get('tp2')} TP3 {data.get('tp3')} SL {data.get('sl')}",
+            }
+        )
     except Exception as e:
-        await update.message.reply_text(f"Gagal parse bro\nError: {e}\nRaw:\n{json.dumps(result, indent=2)[:800]}")
+        # Saat parsing gagal, kirim konten mentah agar user bisa lihat apa yang salah.
+        raw_preview = json.dumps(result, indent=2)[:800] if isinstance(result, dict) else str(result)[:800]
+        await update.message.reply_text(
+            f"Gagal parse bro\nError: {e}\nRaw:\n{raw_preview}"
+        )
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query   = update.callback_query
