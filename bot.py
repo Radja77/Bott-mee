@@ -55,63 +55,67 @@ Kamu bisa ngobrol casual dalam bahasa Indonesia gaul (bro, gw, lu, dll).
 Kamu paham analisis teknikal, candlestick, support/resistance, TP/SL, risk management, futures trading.
 Jawab singkat, padat, dan to the point."""
 
-VISION_PROMPT = """Kamu adalah trading analyst profesional. Analisa chart trading ini secara mendalam dan presisi.
+VISION_PROMPT = """Kamu adalah trading analyst profesional. Analisa chart trading berikut dengan presisi tinggi.
 
-LANGKAH 1 - TENTUKAN ARAH (WAJIB BACA INI DULU):
-Lihat posisi harga SAAT INI vs struktur chart:
-- Trend turun (candle merah dominan, lower high lower low, harga turun) = SHORT
-- Trend naik (candle hijau dominan, higher high higher low, harga naik) = LONG
-- Ada label SHORT/SELL/BEARISH di chart = SHORT
-- Ada label LONG/BUY/BULLISH di chart = LONG
-- Zona merah/resistance DI ATAS harga saat ini dan entry zone ada di bawah = SHORT
-- Zona hijau/support DI BAWAH harga saat ini dan entry zone ada di atas = LONG
-- Harga sudah turun jauh dan ada potensi reversal ke atas = LONG
-- Harga sudah naik jauh dan ada potensi reversal ke bawah = SHORT
+LANGKAH 1 — BACA INFO DASAR:
+- Baca nama pair dari judul chart (contoh: Solana/USD → SOL, Bonfida → FIDA, Pudgy Penguins → PENGU)
+- Baca exchange dari judul (BingX, Binance, Bybit, dll)
+- Baca timeframe (1h, 30m, 3m, 15m, dll)
+- Baca harga saat ini dari label hijau/merah di sisi kanan chart
+- PENTING: Angka dengan koma desimal seperti (0,02689) dibaca sebagai 0.02689
 
-LANGKAH 2 - BACA LEVEL SESUAI ARAH:
+LANGKAH 2 — TENTUKAN ARAH (KRITIS):
+Baca tanda-tanda berikut secara berurutan:
+
+SINYAL LONG (BUY):
+✓ Ada label teks "AREA BUY", "Demand", "fvg", "Support", "Buy Zone" di chart
+✓ Ada zona/box BIRU atau TEAL di BAWAH harga saat ini
+✓ Harga sudah turun jauh dan mendekati zona support (reversal setup)
+✓ Candle terakhir mulai hijau setelah downtrend panjang
+✓ Ada panah/kurva dotted menunjuk ke atas
+
+SINYAL SHORT (SELL):
+✓ Ada zona/box MERAH di ATAS harga saat ini sebagai entry zone
+✓ Harga baru saja pump tajam lalu berbalik turun (rejection dari resistance)
+✓ Candle merah dominan, lower high lower low berlanjut
+✓ Ada zona merah kecil di atas = resistance/entry SHORT
+
+ATURAN BOX/ZONA:
+- Box MERAH KECIL di ATAS = zona SL (untuk LONG) atau zona ENTRY (untuk SHORT)
+- Box MERAH BESAR di ATAS harga = zona ENTRY SHORT + SL ada di paling atas box
+- Box TEAL/HIJAU di BAWAH harga = zona ENTRY LONG atau zona TP (untuk SHORT)
+- Box TEAL/HIJAU BESAR = kalau di bawah entry = multiple TP targets
+- Garis horizontal tunggal KUNING/PUTIH = level kunci (support/resistance/SL)
+- Label "Demand" atau "fvg" = zona entry LONG yang kuat
+
+LANGKAH 3 — BACA LEVEL BERDASARKAN ARAH:
+
 LONG setup:
-- Entry zone = zona hijau/biru (support area)
-- TP1, TP2, TP3 = level-level DI ATAS entry (nilai makin besar)
-- SL = garis/zona MERAH paling BAWAH (nilai terkecil di chart)
+- Entry zone = zona hijau/teal/abu-abu/biru TERDEKAT dengan harga saat ini (bisa di bawah atau sedikit di atas)
+- zone_low = batas bawah zona entry
+- zone_high = batas atas zona entry  
+- entry = midpoint zona entry
+- TP1, TP2, TP3 = level DI ATAS entry, urut dari terdekat ke terjauh (nilai makin besar)
+- SL = garis merah atau batas bawah zona merah PALING BAWAH di chart (nilai terkecil)
 
 SHORT setup:
-- Entry zone = zona merah/pink (resistance area)
-- TP1, TP2, TP3 = level-level DI BAWAH entry (nilai makin kecil)
-- SL = garis/zona MERAH paling ATAS (nilai terbesar di chart)
+- Entry zone = zona merah/pink di BAWAH harga saat ini atau di dekat harga
+- zone_high = batas atas zona entry (nilai terbesar)
+- zone_low = batas bawah zona entry
+- entry = midpoint zona entry
+- TP1, TP2, TP3 = level DI BAWAH entry, urut dari terdekat ke terjauh (nilai makin kecil)
+- SL = batas ATAS zona merah paling atas (nilai terbesar di chart)
 
-LANGKAH 3 - BACA ENTRY ZONE:
-- Kalau ada zona entry (range/box), ambil zone_low dan zone_high
-- entry = nilai tengah zona
+LANGKAH 4 — BACA SEMUA ANGKA DI SISI KANAN:
+- Baca SEMUA label angka yang ada di sisi kanan chart
+- Urutkan dari besar ke kecil
+- Cocokkan dengan zona/garis yang ada
+- Konversi koma ke titik: (0,02689) → 0.02689, (65.000,0) → 65000.0
 
-VALIDASI WAJIB sebelum return JSON:
-- LONG  → sl < zone_low < entry < tp1 < tp2 < tp3
-- SHORT → sl > zone_high > entry > tp1 > tp2 > tp3
-- Kalau tidak sesuai, KOREKSI dulu baru return
-
-Return JSON ini SAJA, tanpa backticks, tanpa teks lain:
-{
-  "pair": "simbol coin saja tanpa network contoh BTC ETH INTC SOL FIDA",
-  "exchange": "nama exchange",
-  "timeframe": "contoh 1h",
-  "direction": "LONG atau SHORT",
-  "current_price": angka,
-  "entry": angka,
-  "entry_zone_low": angka,
-  "entry_zone_high": angka,
-  "tp1": angka,
-  "tp2": angka,
-  "tp3": angka,
-  "sl": angka,
-  "risk_reward": "contoh 1:3",
-  "trend": "Uptrend atau Downtrend atau Sideways",
-  "struktur": "deskripsi struktur market",
-  "zona_kunci": "level penting di chart",
-  "sinyal": "deskripsi sinyal entry",
-  "invalidasi": "kondisi yang membatalkan setup",
-  "catatan_risiko": "saran risk management",
-  "confidence": "Low atau Medium atau High",
-  "notes": "ringkasan analisis"
-}"""
+VALIDASI WAJIB:
+- LONG  → sl < zone_low < entry < zone_high < tp1 < tp2 < tp3
+- SHORT → sl > zone_high > entry > zone_low > tp1 > tp2 > tp3
+- Jika tidak valid, KOREKSI semua nilai sebelum return JSON"""
 
 def parse_manual_order(text: str) -> dict | None:
     """
@@ -558,9 +562,56 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not data:
             await query.edit_message_text("Data analisis ga ketemu bro, kirim chart dulu.")
             return
-        pending_order[user_id] = {"step": "modal", "analysis": data}
+        pending_order[user_id] = {"step": "leverage", "analysis": data, "modal": 1.0}
+        keyboard = [[
+            InlineKeyboardButton("7x",  callback_data="lev_7"),
+            InlineKeyboardButton("10x", callback_data="lev_10"),
+            InlineKeyboardButton("15x", callback_data="lev_15"),
+            InlineKeyboardButton("20x", callback_data="lev_20"),
+        ], [
+            InlineKeyboardButton("✏️ Custom", callback_data="lev_custom"),
+        ]]
         await query.edit_message_text(
-            f"Siap bro!\n\nPair  : {data.get('pair')}\nArah  : {data.get('direction')}\nEntry : {data.get('entry')}\n\nMau pakai modal berapa USDT?\n(ketik angka, contoh: 50)"
+            f"⚡ Setup Order\n\n"
+            f"Pair  : {data.get('pair')}\n"
+            f"Arah  : {data.get('direction')}\n"
+            f"Entry : {data.get('entry')}\n"
+            f"Modal : 1 USDT (default)\n\n"
+            f"Pilih leverage:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+
+    if query.data.startswith("lev_"):
+        if user_id not in pending_order:
+            await query.edit_message_text("Session expired bro, kirim chart lagi.")
+            return
+        lev_val = query.data.replace("lev_", "")
+        if lev_val == "custom":
+            pending_order[user_id]["step"] = "custom_leverage"
+            await query.edit_message_text("Ketik leverage yang lu mau (contoh: 25):")
+            return
+        leverage  = int(lev_val)
+        order     = pending_order[user_id]
+        modal     = order["modal"]
+        analysis  = order["analysis"]
+        pending_order[user_id]["leverage"] = leverage
+        pending_order[user_id]["step"]     = "tp"
+        tp1 = analysis.get("tp1")
+        tp2 = analysis.get("tp2")
+        tp3 = analysis.get("tp3")
+        posisi = modal * leverage
+        keyboard = [[
+            InlineKeyboardButton(f"TP1 ({tp1})", callback_data="tp1"),
+            InlineKeyboardButton(f"TP2 ({tp2})", callback_data="tp2"),
+            InlineKeyboardButton(f"TP3 ({tp3})", callback_data="tp3"),
+        ]]
+        await query.edit_message_text(
+            f"✅ Leverage: {leverage}x\n"
+            f"💰 Modal   : {modal} USDT\n"
+            f"📊 Posisi  : {posisi} USDT\n\n"
+            f"Target TP mana bro?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
 
@@ -623,10 +674,52 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if modal <= 0: raise ValueError
                 pending_order[user_id]["modal"] = modal
                 pending_order[user_id]["step"]  = "leverage"
-                await update.message.reply_text(f"Modal: {modal} USDT\n\nMau leverage berapa?\n(contoh: 15)")
+                keyboard = [[
+                    InlineKeyboardButton("7x",  callback_data="lev_7"),
+                    InlineKeyboardButton("10x", callback_data="lev_10"),
+                    InlineKeyboardButton("15x", callback_data="lev_15"),
+                    InlineKeyboardButton("20x", callback_data="lev_20"),
+                ], [
+                    InlineKeyboardButton("✏️ Custom", callback_data="lev_custom"),
+                ]]
+                await update.message.reply_text(
+                    f"Modal: {modal} USDT\n\nPilih leverage:",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
             except:
                 await update.message.reply_text("Angka ga valid bro, coba lagi (contoh: 50)")
             return
+        if order["step"] == "custom_leverage":
+            try:
+                leverage = int(user_message.strip())
+                if leverage < 1 or leverage > 100:
+                    await update.message.reply_text("Leverage harus antara 1-100 bro!")
+                    return
+                modal    = order.get("modal", 1.0)
+                analysis = order["analysis"]
+                pending_order[user_id]["leverage"] = leverage
+                pending_order[user_id]["step"]     = "tp"
+                tp1 = analysis.get("tp1")
+                tp2 = analysis.get("tp2")
+                tp3 = analysis.get("tp3")
+                posisi = modal * leverage
+                keyboard = [[
+                    InlineKeyboardButton(f"TP1 ({tp1})", callback_data="tp1"),
+                    InlineKeyboardButton(f"TP2 ({tp2})", callback_data="tp2"),
+                    InlineKeyboardButton(f"TP3 ({tp3})", callback_data="tp3"),
+                ], [InlineKeyboardButton("❌ Cancel", callback_data="cancel_order")]]
+                await update.message.reply_text(
+                    f"✅ Leverage: {leverage}x\n"
+                    f"💰 Modal   : {modal} USDT\n"
+                    f"📊 Posisi  : {posisi} USDT\n\n"
+                    f"Target TP mana bro?",
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+                return
+            except ValueError:
+                await update.message.reply_text("Ketik angka leverage nya bro! Contoh: 25")
+                return
+
         if order["step"] == "leverage":
             try:
                 leverage = int(user_message)
