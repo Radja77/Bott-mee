@@ -115,7 +115,39 @@ LANGKAH 4 — BACA SEMUA ANGKA DI SISI KANAN:
 VALIDASI WAJIB:
 - LONG  → sl < zone_low < entry < zone_high < tp1 < tp2 < tp3
 - SHORT → sl > zone_high > entry > zone_low > tp1 > tp2 > tp3
-- Jika tidak valid, KOREKSI semua nilai sebelum return JSON"""
+- Jika tidak valid, KOREKSI semua nilai sebelum return JSON
+
+FORMAT OUTPUT:
+Kembalikan analisis dalam format JSON valid tanpa penjelasan lain (tanpa kode blok). Gunakan struktur berikut (kunci harus sesuai urutan ini):
+{
+  "pair": "PAIRUSDT",
+  "exchange": "BingX",
+  "timeframe": "3m",
+  "direction": "LONG atau SHORT",
+  "entry_zone_low": <angka atau null>,
+  "entry_zone_high": <angka atau null>,
+  "entry": <angka>,
+  "tp1": <angka atau null>,
+  "tp2": <angka atau null>,
+  "tp3": <angka atau null>,
+  "sl": <angka atau null>,
+  "current_price": <angka>,
+  "risk_reward": "R:R" atau null,
+  "trend": "Up/Down/Sideways" atau null,
+  "struktur": <deskripsi singkat struktur market> atau null,
+  "zona_kunci": <zona kunci> atau null,
+  "sinyal": <penjelasan sinyal> atau null,
+  "invalidasi": <level invalidasi> atau null,
+  "catatan_risiko": <catatan tentang risk management> atau null,
+  "confidence": "High"/"Medium"/"Low",
+  "notes": <ringkasan analisis singkat>
+}
+
+Jika tidak ada nilai untuk tp1, tp2, tp3, sl, risk_reward, trend, struktur, zona_kunci, sinyal, invalidasi, atau catatan_risiko, set nilainya null.
+Jika chart tidak menampilkan zona entry secara jelas, set entry_zone_low, entry_zone_high, dan entry sama dengan harga saat ini atau level entry terdekat.
+Gunakan angka desimal dengan titik (.), tanpa koma atau tanda baca lain. Ubah koma menjadi titik dan hapus backtick atau tanda kutip tunggal pada angka seperti 2.3599` menjadi 2.3599.
+Selalu pastikan JSON yang dikembalikan valid dan mengikuti kunci di atas tanpa ada field tambahan.
+"""
 
 def parse_manual_order(text: str) -> dict | None:
     """
