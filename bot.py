@@ -28,6 +28,9 @@ BYBIT_SECRET   = os.environ["BYBIT_SECRET"]
 GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions"
 BYBIT_BASE = "https://api.bybit.com"
 
+# Global mapping untuk menyimpan pasangan simbol dari Bybit
+SYMBOL_MAP: dict[str, str] = {}
+
 chat_history  = {}
 last_analysis = {}
 pending_order = {}
@@ -111,6 +114,25 @@ LANGKAH 4 — BACA SEMUA ANGKA DI SISI KANAN:
 - Urutkan dari besar ke kecil
 - Cocokkan dengan zona/garis yang ada
 - Konversi koma ke titik: (0,02689) → 0.02689, (65.000,0) → 65000.0
+ - Konversi koma ke titik: (0,02689) → 0.02689, (65.000,0) → 65000.0
+ - Jika ada tanda koma ribuan (,) seperti 46,762 atau 56,024, hapus koma dan gabungkan angkanya menjadi 46762.0 dan 56024.0 (digit setelah koma ribuan tidak boleh hilang).
+
+RISK MANAGEMENT DAN SL DEFAULT:
+- Jika chart tidak menampilkan level SL sama sekali, hitung SL otomatis dengan rasio risk:reward minimal **1:3** berdasarkan level TP1. Perhitungan sederhana:
+  * Untuk LONG: risk = (tp1 - entry) / 3, sehingga SL = entry - risk.
+  * Untuk SHORT: risk = (entry - tp1) / 3, sehingga SL = entry + risk.
+- Jika hanya ada satu level target yang jelas, anggap level tersebut sebagai TP1 untuk perhitungan risk:reward.
+- Pastikan field `risk_reward` di JSON diisi dengan format "1:3" ketika SL dihitung otomatis. Jika chart menampilkan rasio R:R lain (misal 1.5 atau 1:2), tulis sesuai yang tertera.
+
+IDENTIFIKASI LONG/SHORT TANPA LABEL:
+- Jika zona entry berwarna merah atau pink berada DI ATAS harga saat ini, maka setupnya **SHORT (SELL)**.
+- Jika zona entry berwarna hijau, teal, abu-abu, atau biru berada DI BAWAH harga saat ini, maka setupnya **LONG (BUY)**.
+- Jika zona entry membungkus harga saat ini (harga berada di dalam kotak), evaluasi bentuk candlestick dan tren sebelum kotak: jika terjadi penurunan panjang kemudian harga memantul naik, anggap LONG; sebaliknya jika sebelumnya naik tajam lalu berbalik turun, anggap SHORT.
+- Bila chart hanya menampilkan garis horizontal tanpa kotak zona: untuk LONG, garis yang berada di bawah harga saat ini menjadi kandidat `entry` atau `sl`, sedangkan garis yang berada di atas harga menjadi `tp1`, `tp2`, dst. Untuk SHORT sebaliknya.
+
+KETEPATAN TANDA BACA:
+- Angka ribuan dengan koma (,) seperti **46,762** harus dibaca sebagai **46762.0** (seluruh digit disatukan, tidak ada digit yang hilang).
+- Angka desimal dengan koma (,) seperti **0,16674** harus dibaca sebagai **0.16674**.
 
 VALIDASI WAJIB:
 - LONG  → sl < zone_low < entry < zone_high < tp1 < tp2 < tp3
@@ -221,16 +243,34 @@ def parse_manual_order(text: str) -> dict | None:
         return None
 
 def fix_symbol(raw: str) -> str:
+    """
+    Normalisasikan nama pair dari TradingView menjadi simbol yang digunakan di Bybit.
+    Jika terdapat mapping yang dimuat dari API Bybit (SYMBOL_MAP), gunakan mapping tersebut.
+    """
+    # Ubah ke huruf besar dan hapus spasi di akhir
     s = raw.upper().strip()
-    s = re.sub(r'(TETHER(US)?|PERPETUAL|CONTRACT|PERP|USDT|USDC|BUSD|USD|BINANCE|BYBIT|BINGX|/|-|\s.*)', '', s)
+    # Hapus kata-kata umum dari judul TradingView
+    s = re.sub(r'(TETHER(US)?|PERPETUAL|CONTRACT|PERP|USDT|USDC|BUSD|USD|BINANCE|BYBIT|BINGX|SPOT|FUTURES)', '', s)
+    # Hapus karakter pemisah dan kata setelah spasi pertama
+    s = re.split(r'[\s/-]', s)[0]
     s = s.strip()
+    # Jika sudah ada di peta symbol (langsung cocok)
+    key = s.replace(" ", "").replace("-", "")
+    if key in SYMBOL_MAP:
+        return SYMBOL_MAP[key]
+    # Coba cari substring: misalnya "LOMBARD" cocok dengan "BARDUSDT"
+    for k, v in SYMBOL_MAP.items():
+        if k and k in key:
+            return v
+    # Fallback: gabungkan dengan USDT
     if not s:
         s = raw.upper().replace("/", "").replace("-", "").replace(" ", "")
         s = re.sub(r'(USDC|BUSD|USD)$', '', s)
         if not s.endswith("USDT"):
             s += "USDT"
     else:
-        s += "USDT"
+        if not s.endswith("USDT"):
+            s += "USDT"
     return s
 
 def hitung_qty(modal_usdt: float, leverage: int, entry_price: float, pair: str) -> float:
@@ -276,6 +316,37 @@ def bybit_headers(body_str: str) -> dict:
         "X-BAPI-RECV-WINDOW": rw,
         "Content-Type"      : "application/json"
     }
+
+# Muat simbol Bybit sekali di awal. Mengambil daftar instrument linear dari Bybit dan menyusun mapping
+async def fetch_bybit_symbols():
+    """
+    Ambil semua instrument linear dari Bybit dan buat peta nama → symbol.
+    Peta ini mencakup baseCoin (misal BARD), symbol lengkap (BARDUSDT), serta nama lain (symbolName).
+    """
+    global SYMBOL_MAP
+    try:
+        # Ambil daftar instrument linear (perpetual) dari Bybit
+        res = await bybit_get("/v5/market/instruments-info", {"category": "linear"})
+        instruments = res.get("result", {}).get("list", []) or []
+        for inst in instruments:
+            try:
+                sym       = inst.get("symbol", "").upper()
+                base_coin = inst.get("baseCoin", "").upper()
+                name      = inst.get("symbolName", "").upper() if inst.get("symbolName") else ""
+                # Map base coin ke simbol
+                if base_coin:
+                    SYMBOL_MAP[base_coin] = sym
+                # Map nama lengkap tanpa spasi/hyphen ke simbol
+                if name:
+                    SYMBOL_MAP[name.replace(" ", "").replace("-", "")] = sym
+                # Map symbol sendiri
+                if sym:
+                    SYMBOL_MAP[sym] = sym
+            except Exception:
+                continue
+        print(f"Loaded {len(SYMBOL_MAP)} symbol mappings from Bybit")
+    except Exception as e:
+        print(f"Error loading Bybit symbols: {e}")
 
 async def bybit_post(endpoint: str, params: dict) -> dict:
     body_str = json.dumps(params)
@@ -587,8 +658,38 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not data:
             raise ValueError("Tidak dapat mem-parsing output analisis menjadi JSON")
 
-        # Normalisasi simbol pair dan simpan ke last_analysis
+        # Normalisasi simbol pair
         data["pair"] = fix_symbol(data.get("pair", ""))
+
+        # Jika SL tidak diberikan atau null, hitung SL otomatis dengan rasio 1:3 dari TP1
+        try:
+            direction     = data.get("direction")
+            entry         = float(data.get("entry")) if data.get("entry") is not None else None
+            # Pilih tp1 yang valid (tp1 bisa None atau bukan angka)
+            tp1_candidates = [data.get("tp1"), data.get("tp2"), data.get("tp3")]
+            tp1_val        = None
+            for t in tp1_candidates:
+                try:
+                    if t is not None:
+                        tp1_val = float(t)
+                        break
+                except:
+                    continue
+            sl_val = data.get("sl")
+            if (sl_val is None or str(sl_val).lower() == "null" or (isinstance(sl_val, (int,float)) and sl_val == 0)) and direction and entry is not None and tp1_val is not None:
+                # Hitung risk minimal 1:3
+                if direction == "LONG":
+                    risk = (tp1_val - entry) / 3
+                    sl_computed = entry - risk
+                else:  # SHORT
+                    risk = (entry - tp1_val) / 3
+                    sl_computed = entry + risk
+                # Update sl di data dan risk_reward
+                data["sl"]         = round(sl_computed, 6)
+                data["risk_reward"] = "1:3"
+        except Exception as e_calc:
+            print(f"Error hitung SL otomatis: {e_calc}")
+
         err     = validasi_levels(data)
         user_id = update.effective_user.id
         last_analysis[user_id] = data
@@ -904,7 +1005,14 @@ async def cmd_saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Error cek saldo bro: {e}")
 
 def main():
-    asyncio.get_event_loop().run_until_complete(sync_time())
+    # Sync waktu server
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(sync_time())
+    # Muat mapping simbol dari Bybit sebelum memproses gambar
+    try:
+        loop.run_until_complete(fetch_bybit_symbols())
+    except Exception as e:
+        print(f"Warning: gagal load simbol Bybit: {e}")
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("posisi", cmd_posisi))
     app.add_handler(CommandHandler("saldo", cmd_saldo))
