@@ -58,89 +58,31 @@ Kamu bisa ngobrol casual dalam bahasa Indonesia gaul (bro, gw, lu, dll).
 Kamu paham analisis teknikal, candlestick, support/resistance, TP/SL, risk management, futures trading.
 Jawab singkat, padat, dan to the point."""
 
+# Perbaiki vision prompt untuk mengurangi kesalahan dan memperbaiki tanda baca serta duplikasi.
 VISION_PROMPT = """Kamu adalah trading analyst profesional. Analisa chart trading berikut dengan presisi tinggi.
 
-LANGKAH 1 — BACA INFO DASAR:
-- Baca nama pair dari judul chart (contoh: Solana/USD → SOL, Bonfida → FIDA, Pudgy Penguins → PENGU)
-- Baca exchange dari judul (BingX, Binance, Bybit, dll)
-- Baca timeframe (1h, 30m, 3m, 15m, dll)
-- Baca harga saat ini dari label hijau/merah di sisi kanan chart
-- PENTING: Angka dengan koma desimal seperti (0,02689) dibaca sebagai 0.02689
+1. Baca informasi dasar dari chart: nama pair (misal Solana/USD → SOL), nama exchange (BingX, Binance, Bybit, dll.), timeframe (1h, 30m, 3m, 15m, dll.), dan harga terakhir dari label hijau/merah di sisi kanan chart. Pastikan angka desimal dengan koma seperti 0,02689 dibaca sebagai 0.02689. Angka ribuan seperti 46,762 atau 56,024 harus dibaca sebagai 46762.0 dan 56024.0 (hapus tanda koma).
 
-LANGKAH 2 — TENTUKAN ARAH (KRITIS):
-Baca tanda-tanda berikut secara berurutan:
+2. Tentukan arah:
+   • Sinyal LONG (BUY): ada label "AREA BUY", "Demand", "fvg", "Support", atau "Buy Zone"; terdapat zona/box biru, teal, hijau, atau abu‑abu di bawah harga; harga turun jauh dan mendekati zona support; candle terakhir berwarna hijau setelah downtrend; ada panah atau garis putus-putus mengarah ke atas.
+   • Sinyal SHORT (SELL): ada zona/box merah atau pink di atas harga; harga baru saja naik tajam lalu berbalik turun (rejection); candle merah dominan dengan pola lower high lower low; zona merah kecil di atas menandakan resistance/entry short.
 
-SINYAL LONG (BUY):
-✓ Ada label teks "AREA BUY", "Demand", "fvg", "Support", "Buy Zone" di chart
-✓ Ada zona/box BIRU atau TEAL di BAWAH harga saat ini
-✓ Harga sudah turun jauh dan mendekati zona support (reversal setup)
-✓ Candle terakhir mulai hijau setelah downtrend panjang
-✓ Ada panah/kurva dotted menunjuk ke atas
+3. Identifikasi level berdasarkan arah:
+   • Untuk LONG: zona entry adalah zona hijau, teal, abu‑abu, atau biru terdekat dengan harga saat ini. zone_low adalah batas bawah zona entry, zone_high adalah batas atas zona entry, entry adalah titik tengah zona entry. TP1, TP2, dan TP3 adalah level di atas entry, diurutkan dari terdekat ke terjauh. SL adalah garis merah atau batas bawah zona merah paling rendah.
+   • Untuk SHORT: zona entry adalah zona merah atau pink terdekat di atas harga. zone_high adalah batas atas zona entry, zone_low adalah batas bawah zona entry, entry adalah titik tengah zona entry. TP1, TP2, dan TP3 adalah level di bawah entry, diurutkan dari terdekat ke terjauh. SL adalah batas atas zona merah paling tinggi.
 
-SINYAL SHORT (SELL):
-✓ Ada zona/box MERAH di ATAS harga saat ini sebagai entry zone
-✓ Harga baru saja pump tajam lalu berbalik turun (rejection dari resistance)
-✓ Candle merah dominan, lower high lower low berlanjut
-✓ Ada zona merah kecil di atas = resistance/entry SHORT
+4. Baca semua angka di sisi kanan chart, urutkan dari terbesar ke terkecil, dan cocokkan dengan zona atau garis yang ada. Jika chart hanya menampilkan garis horizontal tanpa kotak zona, gunakan garis di bawah harga sebagai kandidat `entry` atau `sl`, dan garis di atas harga sebagai `tp1`, `tp2`, dan seterusnya.
 
-ATURAN BOX/ZONA:
-- Box MERAH KECIL di ATAS = zona SL (untuk LONG) atau zona ENTRY (untuk SHORT)
-- Box MERAH BESAR di ATAS harga = zona ENTRY SHORT + SL ada di paling atas box
-- Box TEAL/HIJAU di BAWAH harga = zona ENTRY LONG atau zona TP (untuk SHORT)
-- Box TEAL/HIJAU BESAR = kalau di bawah entry = multiple TP targets
-- Garis horizontal tunggal KUNING/PUTIH = level kunci (support/resistance/SL)
-- Label "Demand" atau "fvg" = zona entry LONG yang kuat
+5. Jika tidak ada zona entry yang jelas, tetapkan entry_zone_low, entry_zone_high, dan entry sama dengan harga saat ini. Pastikan format angka menggunakan titik desimal dan tidak ada tanda baca lain. Hapus backtick atau tanda kutip tunggal pada angka seperti 2.3599`.
 
-LANGKAH 3 — BACA LEVEL BERDASARKAN ARAH:
+6. Hitung level SL secara otomatis dengan rasio risk:reward minimal 1:3 berdasarkan TP1 apabila chart tidak menampilkan level SL sama sekali. Untuk LONG: risk = (tp1 − entry) / 3 dan SL = entry − risk; untuk SHORT: risk = (entry − tp1) / 3 dan SL = entry + risk. Jika hanya ada satu target, gunakan target tersebut sebagai TP1. Isi field `risk_reward` dengan format "1:3" jika SL dihitung otomatis.
 
-LONG setup:
-- Entry zone = zona hijau/teal/abu-abu/biru TERDEKAT dengan harga saat ini (bisa di bawah atau sedikit di atas)
-- zone_low = batas bawah zona entry
-- zone_high = batas atas zona entry  
-- entry = midpoint zona entry
-- TP1, TP2, TP3 = level DI ATAS entry, urut dari terdekat ke terjauh (nilai makin besar)
-- SL = garis merah atau batas bawah zona merah PALING BAWAH di chart (nilai terkecil)
+7. Validasi wajib: 
+   • LONG  → sl < zone_low < entry < zone_high < tp1 < tp2 < tp3
+   • SHORT → sl > zone_high > entry > zone_low > tp1 > tp2 > tp3
+   Jika nilai tidak memenuhi syarat, koreksi semua nilai sebelum mengembalikan JSON.
 
-SHORT setup:
-- Entry zone = zona merah/pink di BAWAH harga saat ini atau di dekat harga
-- zone_high = batas atas zona entry (nilai terbesar)
-- zone_low = batas bawah zona entry
-- entry = midpoint zona entry
-- TP1, TP2, TP3 = level DI BAWAH entry, urut dari terdekat ke terjauh (nilai makin kecil)
-- SL = batas ATAS zona merah paling atas (nilai terbesar di chart)
-
-LANGKAH 4 — BACA SEMUA ANGKA DI SISI KANAN:
-- Baca SEMUA label angka yang ada di sisi kanan chart
-- Urutkan dari besar ke kecil
-- Cocokkan dengan zona/garis yang ada
-- Konversi koma ke titik: (0,02689) → 0.02689, (65.000,0) → 65000.0
- - Konversi koma ke titik: (0,02689) → 0.02689, (65.000,0) → 65000.0
- - Jika ada tanda koma ribuan (,) seperti 46,762 atau 56,024, hapus koma dan gabungkan angkanya menjadi 46762.0 dan 56024.0 (digit setelah koma ribuan tidak boleh hilang).
-
-RISK MANAGEMENT DAN SL DEFAULT:
-- Jika chart tidak menampilkan level SL sama sekali, hitung SL otomatis dengan rasio risk:reward minimal **1:3** berdasarkan level TP1. Perhitungan sederhana:
-  * Untuk LONG: risk = (tp1 - entry) / 3, sehingga SL = entry - risk.
-  * Untuk SHORT: risk = (entry - tp1) / 3, sehingga SL = entry + risk.
-- Jika hanya ada satu level target yang jelas, anggap level tersebut sebagai TP1 untuk perhitungan risk:reward.
-- Pastikan field `risk_reward` di JSON diisi dengan format "1:3" ketika SL dihitung otomatis. Jika chart menampilkan rasio R:R lain (misal 1.5 atau 1:2), tulis sesuai yang tertera.
-
-IDENTIFIKASI LONG/SHORT TANPA LABEL:
-- Jika zona entry berwarna merah atau pink berada DI ATAS harga saat ini, maka setupnya **SHORT (SELL)**.
-- Jika zona entry berwarna hijau, teal, abu-abu, atau biru berada DI BAWAH harga saat ini, maka setupnya **LONG (BUY)**.
-- Jika zona entry membungkus harga saat ini (harga berada di dalam kotak), evaluasi bentuk candlestick dan tren sebelum kotak: jika terjadi penurunan panjang kemudian harga memantul naik, anggap LONG; sebaliknya jika sebelumnya naik tajam lalu berbalik turun, anggap SHORT.
-- Bila chart hanya menampilkan garis horizontal tanpa kotak zona: untuk LONG, garis yang berada di bawah harga saat ini menjadi kandidat `entry` atau `sl`, sedangkan garis yang berada di atas harga menjadi `tp1`, `tp2`, dst. Untuk SHORT sebaliknya.
-
-KETEPATAN TANDA BACA:
-- Angka ribuan dengan koma (,) seperti **46,762** harus dibaca sebagai **46762.0** (seluruh digit disatukan, tidak ada digit yang hilang).
-- Angka desimal dengan koma (,) seperti **0,16674** harus dibaca sebagai **0.16674**.
-
-VALIDASI WAJIB:
-- LONG  → sl < zone_low < entry < zone_high < tp1 < tp2 < tp3
-- SHORT → sl > zone_high > entry > zone_low > tp1 > tp2 > tp3
-- Jika tidak valid, KOREKSI semua nilai sebelum return JSON
-
-FORMAT OUTPUT:
-Kembalikan analisis dalam format JSON valid tanpa penjelasan lain (tanpa kode blok). Gunakan struktur berikut (kunci harus sesuai urutan ini):
+8. Kembalikan analisis dalam format JSON sesuai struktur berikut (jangan tambahkan field lain):
 {
   "pair": "PAIRUSDT",
   "exchange": "BingX",
@@ -165,11 +107,7 @@ Kembalikan analisis dalam format JSON valid tanpa penjelasan lain (tanpa kode bl
   "notes": <ringkasan analisis singkat>
 }
 
-Jika tidak ada nilai untuk tp1, tp2, tp3, sl, risk_reward, trend, struktur, zona_kunci, sinyal, invalidasi, atau catatan_risiko, set nilainya null.
-Jika chart tidak menampilkan zona entry secara jelas, set entry_zone_low, entry_zone_high, dan entry sama dengan harga saat ini atau level entry terdekat.
-Gunakan angka desimal dengan titik (.), tanpa koma atau tanda baca lain. Ubah koma menjadi titik dan hapus backtick atau tanda kutip tunggal pada angka seperti 2.3599` menjadi 2.3599.
-Selalu pastikan JSON yang dikembalikan valid dan mengikuti kunci di atas tanpa ada field tambahan.
-"""
+Isi null jika suatu field tidak tersedia. Pastikan JSON yang dikembalikan valid tanpa kode blok."""  # end of VISION_PROMPT
 
 def parse_manual_order(text: str) -> dict | None:
     """
@@ -562,15 +500,16 @@ def format_analysis(data: dict) -> str:
     tf   = data.get("timeframe", "-")
     ex   = data.get("exchange", "-")
     
+    # Rombak tampilan agar lebih premium: hilangkan analisis, ringkasan, dan bagian risk management
     return (
         f"╔══════════════════════╗\n"
-        f"║   📊 SIGNAL TRADING  ║\n"
+        f"║   📊 PREMIUM SIGNAL  ║\n"
         f"╚══════════════════════╝\n\n"
         f"{dir_emoji} *{pair}* | {tf} | {ex}\n"
-        f"Arah    : {dir_emoji} *{dir_label}*\n"
-        f"Trend   : {trend_emoji} {trend}\n"
-        f"Sinyal  : {cf_badge}\n"
-        f"Harga   : `{data.get('current_price','-')}`\n\n"
+        f"Arah     : {dir_emoji} *{dir_label}*\n"
+        f"Trend    : {trend_emoji} {trend}\n"
+        f"Confidence: {cf_badge}\n"
+        f"Harga    : `{data.get('current_price','-')}`\n\n"
         f"━━━━━━ 🎯 ENTRY SETUP ━━━━━━\n"
         f"📍 Entry     : `{data.get('entry','-')}`\n"
         f"📦 Zone Low  : `{data.get('entry_zone_low','-')}`\n"
@@ -580,16 +519,7 @@ def format_analysis(data: dict) -> str:
         f"🎯 TP3  : `{data.get('tp3','-')}`\n"
         f"🛑 SL   : `{data.get('sl','-')}`\n"
         f"⚖️  R:R  : {data.get('risk_reward','-')}\n\n"
-        f"━━━━━━ 🔍 ANALISIS ━━━━━━\n"
-        f"📐 Struktur  : {data.get('struktur','-')}\n"
-        f"🗝️  Zona Kunci: {data.get('zona_kunci','-')}\n"
-        f"📡 Sinyal    : {data.get('sinyal','-')}\n\n"
-        f"━━━━━━ ⚠️ RISK MANAGEMENT ━━━━━━\n"
-        f"❌ Invalidasi: {data.get('invalidasi','-')}\n"
-        f"💡 Risk Note : {data.get('catatan_risiko','-')}\n\n"
-        f"━━━━━━ 📝 SUMMARY ━━━━━━\n"
-        f"{data.get('notes','-')}\n"
-        f"\n⏰ {data.get('timeframe','-')} | 🏦 {data.get('exchange','-')}"
+        f"⏰ {data.get('timeframe','-')} | 🏦 {data.get('exchange','-')}"
     )
 
 async def cmd_posisi(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -737,7 +667,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not data:
             await query.edit_message_text("Data analisis ga ketemu bro, kirim chart dulu.")
             return
-        pending_order[user_id] = {"step": "leverage", "analysis": data, "modal": 1.0}
+        # Gunakan modal default 0.3 USDT agar posisi awal kecil secara bawaan
+        pending_order[user_id] = {"step": "leverage", "analysis": data, "modal": 0.3}
         keyboard = [[
             InlineKeyboardButton("7x",  callback_data="lev_7"),
             InlineKeyboardButton("10x", callback_data="lev_10"),
@@ -751,7 +682,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Pair  : {data.get('pair')}\n"
             f"Arah  : {data.get('direction')}\n"
             f"Entry : {data.get('entry')}\n"
-            f"Modal : 1 USDT (default)\n\n"
+            f"Modal : 0.3 USDT (default)\n\n"
             f"Pilih leverage:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
@@ -870,7 +801,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if leverage < 1 or leverage > 100:
                     await update.message.reply_text("Leverage harus antara 1-100 bro!")
                     return
-                modal    = order.get("modal", 1.0)
+                # Gunakan fallback 0.3 jika modal belum diatur
+                modal    = order.get("modal", 0.3)
                 analysis = order["analysis"]
                 pending_order[user_id]["leverage"] = leverage
                 pending_order[user_id]["step"]     = "tp"
